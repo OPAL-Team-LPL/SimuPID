@@ -2,13 +2,19 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import control
+import os
 
 # ===========================
 # PAGE CONFIG
 # ===========================
 st.set_page_config(page_title="Simulation PID", layout="wide")
 st.title("ENERGETIQUE 2 - Simulation PID")
-st.image("logo-sup-galilee.png")  # taille originale
+
+# ===========================
+# IMAGES
+# ===========================
+if os.path.exists("logo-sup-galilee.png"):
+    st.image("logo-sup-galilee.png")
 
 # ===========================
 # NOTATIONS
@@ -22,8 +28,6 @@ st.markdown("**Fonction de transfert du correcteur PID :**")
 st.latex(r"C(p) = K_p\left(1 + \frac{1}{T_i p} + \frac{T_d p}{1 + \frac{T_d}{N}p}\right)")
 st.markdown("**Fonction de transfert en boucle fermée :**")
 st.latex(r"T(p) = \frac{C(p)G(p)}{1 + C(p)G(p)H(p)}")
-st.markdown("### 🔁 Schéma bloc")
-st.image("regulation.gif", use_container_width=True, caption="Boucle fermée PID")
 
 # ===========================
 # PID PARAMS
@@ -31,7 +35,6 @@ st.image("regulation.gif", use_container_width=True, caption="Boucle fermée PID
 st.sidebar.header("Paramètres du PID")
 mode_pid = st.sidebar.radio("Mode de réglage PID", ("Kp/Ki/Kd", "Kp/Ti/Td"))
 
-# ---- Sliders PID ----
 Kp = st.sidebar.slider("Kp", 0.0, 50.0, 1.0, 0.1)
 st.sidebar.write(f"Kp = {Kp:.2f}")
 
@@ -41,7 +44,7 @@ if mode_pid == "Kp/Ki/Kd":
     Kd = st.sidebar.slider("Kd", 0.0, 50.0, 0.0, 0.01)
     st.sidebar.write(f"Kd = {Kd:.2f}")
     Ti = Kp / Ki if Ki != 0 else 1e6
-    Td = Kd / Kp
+    Td = Kd / Kp if Kp != 0 else 0
 else:
     Ti = st.sidebar.slider("Ti", 0.001, 1000.0, 1.0, 0.01)
     st.sidebar.write(f"Ti = {Ti:.3f}")
@@ -50,10 +53,8 @@ else:
     Ki = Kp / Ti if Ti != 0 else 1e6
     Kd = Kp * Td
 
-# Filtre dérivatif
 N = st.sidebar.slider("N (filtre dérivatif)", 1.0, 50.0, 10.0, 1.0)
 
-# Correcteur PID
 num_C = [Kp * Ti * Td * (1 + 1/N), Kp * Ti + Kp * Td / N, Kp]
 den_C = [Td * Ti / N, Ti, 0]
 C = control.TransferFunction(num_C, den_C)
@@ -91,10 +92,18 @@ T = control.feedback(L, H)
 # ===========================
 st.markdown("---")
 st.markdown("## 📈 Réponse indicielle")
-t = np.linspace(0, 20, 5000)
+
+# Temps réduit pour éviter blocage
+t = np.linspace(0, 20, 1000)
 u = np.ones_like(t)
-t_out, y = control.forced_response(T, T=t, U=u)
-y = np.asarray(y).flatten()
+
+try:
+    t_out, y = control.forced_response(T, T=t, U=u)
+    y = np.asarray(y).flatten()
+except Exception as e:
+    st.error(f"Erreur lors de la simulation : {e}")
+    y = np.zeros_like(t)
+    t_out = t
 
 fig, ax = plt.subplots()
 ax.plot(t_out, y)
