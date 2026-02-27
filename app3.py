@@ -10,10 +10,10 @@ import os
 st.set_page_config(page_title="Simulation PID", layout="wide")
 
 # ===========================
-# LOGO EN TAILLE ORIGINALE
+# LOGO
 # ===========================
 if os.path.exists("logo-sup-galilee.png"):
-    st.image("logo-sup-galilee.png")  # taille originale
+    st.image("logo-sup-galilee.png")
 
 st.title("ENERGETIQUE 2 - Simulation PID")
 st.markdown("---")
@@ -23,20 +23,23 @@ st.markdown("---")
 # ===========================
 st.markdown("## 📘 Modèle du système")
 
-st.markdown("**Fonction de transfert du système :**")
+st.markdown("**Chaîne directe (2ᵉ ordre) :**")
 st.latex(r"G(p)=\frac{b_1 p + b_0}{a_2 p^2 + a_1 p + a_0}")
 
-st.markdown("**Fonction de transfert du capteur :**")
-st.latex(r"H(p)=\frac{c_1 p + c_0}{d_2 p^2 + d_1 p + d_0}")
+st.markdown("**Chaîne de retour (1er ordre) :**")
+st.latex(r"H(p)=\frac{c_0}{d_1 p + d_0}")
 
-st.markdown("**Correcteur PID (forme Kp/Ti/Td) :**")
-st.latex(r"C(p)=K_p\left(1 + \frac{1}{T_i p} + T_d p\right)")
-
-st.markdown("**Correcteur PID (forme Kp/Ki/Kd) :**")
+st.markdown("**Correcteur PID :**")
 st.latex(r"C(p)=K_p + \frac{K_i}{p} + K_d p")
 
 st.markdown("**Boucle fermée :**")
 st.latex(r"T(p)=\frac{C(p)G(p)}{1 + C(p)G(p)H(p)}")
+
+# ===========================
+# SIDEBAR - TEMPS SIMU
+# ===========================
+st.sidebar.header("⏱ Temps de simulation")
+t_max = st.sidebar.slider("Temps maximum (s)", 10, 100, 20, 1)
 
 # ===========================
 # SIDEBAR - PID
@@ -44,27 +47,21 @@ st.latex(r"T(p)=\frac{C(p)G(p)}{1 + C(p)G(p)H(p)}")
 st.sidebar.header("⚙️ Paramètres PID")
 
 mode = st.sidebar.radio("Mode de réglage", ("Kp / Ki / Kd", "Kp / Ti / Td"))
-
 Kp = st.sidebar.slider("Kp", 0.0, 50.0, 1.0, 0.1)
 
 if mode == "Kp / Ki / Kd":
-    Ki = st.sidebar.slider("Ki", 0.0, 1000.0, 10.0, 0.1)
+    Ki = st.sidebar.slider("Ki", 0.0, 10.0, 0.0, 0.001)
     Kd = st.sidebar.slider("Kd", 0.0, 50.0, 0.0, 0.01)
-
-    Ti = Kp / Ki if Ki != 0 else 1e6
-    Td = Kd / Kp if Kp != 0 else 0.0
-
 else:
     Ti = st.sidebar.slider("Ti", 0.001, 100.0, 1.0, 0.01)
     Td = st.sidebar.slider("Td", 0.0, 20.0, 0.0, 0.01)
-
     Ki = Kp / Ti
     Kd = Kp * Td
 
 # ===========================
-# SYSTEME G
+# SYSTEME G (2e ordre)
 # ===========================
-st.sidebar.header("📡 Système G(p)")
+st.sidebar.header("📡 Système G(p) (2ᵉ ordre)")
 
 b1 = st.sidebar.number_input("b1", value=0.0)
 b0 = st.sidebar.number_input("b0", value=1.0)
@@ -73,13 +70,11 @@ a1 = st.sidebar.number_input("a1", value=1.0)
 a0 = st.sidebar.number_input("a0", value=1.0)
 
 # ===========================
-# CAPTEUR H
+# CAPTEUR H (1er ordre)
 # ===========================
-st.sidebar.header("🎯 Capteur H(p)")
+st.sidebar.header("🎯 Capteur H(p) (1er ordre)")
 
-c1 = st.sidebar.number_input("c1", value=0.0)
 c0 = st.sidebar.number_input("c0", value=1.0)
-d2 = st.sidebar.number_input("d2", value=0.0)
 d1 = st.sidebar.number_input("d1", value=0.0)
 d0 = st.sidebar.number_input("d0", value=1.0)
 
@@ -87,15 +82,17 @@ d0 = st.sidebar.number_input("d0", value=1.0)
 # CONSTRUCTION DES POLYNOMES
 # ===========================
 
-# PID : Kd s² + Kp s + Ki / s
+# PID : (Kd s² + Kp s + Ki) / s
 num_C = [Kd, Kp, Ki]
 den_C = [1, 0]
 
+# G(p) ordre 2
 num_G = [b1, b0]
 den_G = [a2, a1, a0]
 
-num_H = [c1, c0]
-den_H = [d2, d1, d0]
+# H(p) ordre 1
+num_H = [c0]
+den_H = [d1, d0]
 
 # C*G
 num_CG = np.polymul(num_C, num_G)
@@ -105,7 +102,7 @@ den_CG = np.polymul(den_C, den_G)
 num_CGH = np.polymul(num_CG, num_H)
 den_CGH = np.polymul(den_CG, den_H)
 
-# Boucle fermée
+# Boucle fermée : CG / (1 + CGH)
 num_T = np.polymul(num_CG, den_H)
 den_T = np.polyadd(den_CGH, num_CGH)
 
@@ -116,7 +113,7 @@ system = signal.TransferFunction(num_T, den_T)
 # ===========================
 st.markdown("## 📈 Réponse indicielle")
 
-t = np.linspace(0, 20, 1000)
+t = np.linspace(0, t_max, 1000)
 
 try:
     t_out, y = signal.step(system, T=t)
@@ -127,7 +124,7 @@ except:
 
 fig, ax = plt.subplots()
 ax.plot(t_out, y)
-ax.set_xlabel("Temps")
+ax.set_xlabel("Temps (s)")
 ax.set_ylabel("Sortie")
 ax.grid(True)
 
